@@ -25,10 +25,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Convert the local date/time to UTC for storage
+    // The HTML inputs return local time, so we need to convert to UTC
+    const localDateTime = new Date(`${date}T${time}`);
+    const utcDate = localDateTime.toISOString().split('T')[0]; // YYYY-MM-DD
+    const utcTime = localDateTime.toISOString().split('T')[1].substring(0, 5); // HH:MM
+
+    console.log(`Converting reminder time: Local ${date} ${time} -> UTC ${utcDate} ${utcTime}`);
+
     // Store the reminder with retry logic
     let reminder;
     try {
-      reminder = await addReminder({ email, date, time });
+      reminder = await addReminder({ email, date: utcDate, time: utcTime });
     } catch (dbError: unknown) {
       console.error('Database error when adding reminder:', dbError);
       const err = dbError as { code?: string };
@@ -42,7 +50,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Send the confirmation email
+    // Send the confirmation email (use original local time for display)
     const success = await sendConfirmationEmail({ email, date, time });
 
     if (success) {

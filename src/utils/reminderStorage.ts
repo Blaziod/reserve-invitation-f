@@ -153,9 +153,14 @@ export const updateReminder = async (id: string, updates: Partial<ReminderData>)
 export const getPendingReminders = async (): Promise<ReminderData[]> => {
   try {
     // Get the current time
-    const now = new Date().toISOString();
+    const now = new Date();
+    const nowISO = now.toISOString();
+    
+    console.log('🔍 Checking for pending reminders...');
+    console.log('Current time (UTC):', nowISO);
+    console.log('Current time (local):', now.toString());
 
-    // Use queryWithRetries to handle potential connection issues
+    
     const result = await queryWithRetries(() => 
       pool.query(`
         SELECT 
@@ -165,12 +170,15 @@ export const getPendingReminders = async (): Promise<ReminderData[]> => {
           time, 
           sent_confirmation as "sentConfirmation", 
           sent_reminder as "sentReminder", 
-          created_at::text as "createdAt"
+          created_at::text as "createdAt",
+          (date || ' ' || time)::timestamp as "reminderTimestamp",
+          NOW() as "currentTime",
+          EXTRACT(EPOCH FROM (date || ' ' || time)::timestamp) as "reminderEpoch",
+          EXTRACT(EPOCH FROM NOW()) as "currentEpoch",
+          EXTRACT(EPOCH FROM (date || ' ' || time)::timestamp) <= EXTRACT(EPOCH FROM NOW()) as "isPast"
         FROM reminders
-        WHERE 
-          sent_reminder = false AND
-          (date || 'T' || time)::timestamp <= $1::timestamp
-      `, [now]),
+        WHERE sent_reminder = false
+      `, []),
       5,  // 5 retries
       2000 // 2 seconds initial delay (longer than default)
     );
@@ -180,10 +188,24 @@ export const getPendingReminders = async (): Promise<ReminderData[]> => {
       return [];
     }
 
-    return result.rows;
+    // Log all reminders for debugging
+    console.log(`Total unsent reminders found: ${result.rows.length}`);
+    result.rows.forEach(row => {
+      console.log(`  - ID: ${row.id}, Email: ${row.email}, Reminder: ${row.date} ${row.time}`);
+      console.log(`    Reminder Time: ${row.reminderTimestamp}`);
+      console.log(`    Current Time: ${row.currentTime}`);
+      console.log(`    Reminder Epoch: ${row.reminderEpoch}, Current Epoch: ${row.currentEpoch}`);
+      console.log(`    Is Past Due: ${row.isPast}`);
+    });
+
+    // Filter for those that are actually past due
+    const pendingReminders = result.rows.filter(row => row.isPast);
+    console.log(`✅ Pending reminders to send: ${pendingReminders.length}`);
+
+    return pendingReminders;
   } catch (error) {
     console.error('Error getting pending reminders from database:', error);
-    // Don't throw the error, just return an empty array to prevent the cron job from failing
+    
     return [];
   }
 };

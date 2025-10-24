@@ -2,6 +2,9 @@ import type {Metadata} from "next";
 import {Geist, Geist_Mono} from "next/font/google";
 import "./globals.css";
 
+// Import cron-init to ensure the cron job is started when the app loads
+import '@/app/api/cron-init';
+
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
